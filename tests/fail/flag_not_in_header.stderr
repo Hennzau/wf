@@ -1,0 +1,5 @@
+error: Too few items: Expected at least 1
+ --> tests/fail/flag_not_in_header.rs:6:10
+  |
+6 |     #[wf(opt(), format = Be)]
+  |          ^^^

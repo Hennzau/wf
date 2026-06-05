@@ -1,0 +1,7 @@
+error: Bit length should be an integer
+ --> tests/fail/header_malformed.rs:3:10
+  |
+3 | #[derive(Wired)]
+  |          ^^^^^
+  |
+  = note: this error originates in the derive macro `Wired` (in Nightly builds, run with -Z macro-backtrace for more info)

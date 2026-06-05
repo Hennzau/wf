@@ -1,0 +1,7 @@
+error: Header len should be a power of 2, between 8 and 64
+ --> tests/fail/header_not_power_of_2.rs:3:10
+  |
+3 | #[derive(Wired)]
+  |          ^^^^^
+  |
+  = note: this error originates in the derive macro `Wired` (in Nightly builds, run with -Z macro-backtrace for more info)

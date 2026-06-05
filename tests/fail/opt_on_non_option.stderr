@@ -1,0 +1,5 @@
+error: This type must not have an `opt(if = ..)` attribute
+ --> tests/fail/opt_on_non_option.rs:7:20
+  |
+7 |     not_an_option: u32,
+  |                    ^^^

@@ -1,0 +1,7 @@
+error[E0599]: no associated function or constant named `FLAG_F` found for struct `Bad` in the current scope
+ --> tests/fail/flag_not_1_bit.rs:6:21
+  |
+5 | struct Bad {
+  | ---------- associated function or constant `FLAG_F` not found for this struct
+6 |     #[wf(opt(flag = F), format = Be)]
+  |                     ^ associated function or constant not found in `Bad`

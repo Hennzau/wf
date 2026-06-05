@@ -1,0 +1,5 @@
+error: Too many items: Expected no more than 1
+ --> tests/fail/slot_and_prefixed.rs:6:10
+  |
+6 |     #[wf(len(slot = S, prefixed(u16)))]
+  |          ^^^

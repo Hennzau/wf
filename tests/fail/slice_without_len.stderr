@@ -1,0 +1,5 @@
+error: This type requires a `len` attribute
+ --> tests/fail/slice_without_len.rs:7:14
+  |
+7 |     content: &'a str,
+  |              ^
