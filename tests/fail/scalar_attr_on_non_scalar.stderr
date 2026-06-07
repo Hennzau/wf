@@ -1,0 +1,5 @@
+error: attribute `#[wf(msg(..))]` must be set
+  --> tests/fail/scalar_attr_on_non_scalar.rs:12:12
+   |
+12 |     inner: Inner,
+   |            ^^^^^

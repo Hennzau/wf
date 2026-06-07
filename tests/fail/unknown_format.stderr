@@ -1,5 +1,5 @@
-error[E0425]: cannot find type `Foo` in module `elvwf::scalar`
- --> tests/fail/unknown_format.rs:5:19
+error: Unknown field: `Foo`. Available values: `be`, `le`, `ne`, `vle`
+ --> tests/fail/unknown_format.rs:5:24
   |
-5 |     #[wf(format = Foo)]
-  |                   ^^^ not found in `elvwf::scalar`
+5 |     #[wf(scalar(format(Foo)))]
+  |                        ^^^

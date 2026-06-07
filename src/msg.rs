@@ -1,347 +1,200 @@
-use crate::{header, scalar, slice};
+#[cfg(feature = "randomized")]
+use crate::Randomized;
+use crate::{header, scalar};
+use elvwf_derive::wfu;
 
-#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Error {
-    #[error(transparent)]
-    Scalar(#[from] scalar::Error),
+pub use crate::error::Error;
 
-    #[error(transparent)]
-    Slice(#[from] slice::Error),
+pub mod noprefixnohead {
+    use super::*;
 
-    #[error(transparent)]
-    Header(#[from] header::Error),
+    pub fn len<'a, T: Wired<'a>>(this: &T) -> usize {
+        T::body_len(this)
+    }
+
+    pub fn encode<'a, T: Wired<'a>>(buf: &mut &mut [u8], this: T) -> Result<(), Error> {
+        T::encode_body(this, buf)
+    }
+
+    pub fn decode<'a, T: Wired<'a>>(
+        buf: &mut &'a [u8],
+        h: T::Header,
+        len: usize,
+    ) -> Result<T, Error> {
+        T::decode_body(buf, len, h)
+    }
 }
 
-pub fn header_len<'a, T: Wired<'a>>() -> usize {
-    header::len::<T::Header>()
+pub mod noprefix {
+    use super::*;
+
+    pub fn len<'a, T: Wired<'a>>(this: &T) -> usize {
+        header::len::<T::Header>() + super::noprefixnohead::len(this)
+    }
+
+    pub fn encode<'a, T: Wired<'a>>(buf: &mut &mut [u8], this: T) -> Result<(), Error> {
+        header::encode::<T::Header, T::HeaderCodec>(buf, T::header(&this)?)?;
+        super::noprefixnohead::encode::<T>(buf, this)
+    }
+
+    pub fn decode<'a, T: Wired<'a>>(buf: &mut &'a [u8], len: usize) -> Result<T, Error> {
+        let h = header::decode::<T::Header, T::HeaderCodec>(buf)?;
+        super::noprefixnohead::decode(buf, h, len - core::mem::size_of::<T::Header>())
+    }
 }
 
-pub fn body_len<'a, T: Wired<'a>>(this: &T) -> usize {
-    T::body_len(this)
+pub mod nohead {
+    use super::*;
+
+    pub fn len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(this: &T) -> usize {
+        C::len(super::noprefixnohead::len(this)) + super::noprefixnohead::len(this)
+    }
+
+    pub fn encode<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
+        buf: &mut &mut [u8],
+        this: T,
+    ) -> Result<(), Error> {
+        C::write(buf, super::noprefixnohead::len(&this))?;
+        super::noprefixnohead::encode::<T>(buf, this)
+    }
+
+    pub fn decode<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
+        buf: &mut &'a [u8],
+        h: T::Header,
+    ) -> Result<T, Error> {
+        let len = C::read(buf)?;
+        super::noprefixnohead::decode(buf, h, len)
+    }
 }
 
-pub fn value_len<'a, T: Wired<'a>>(this: &T) -> usize {
-    header_len::<T>() + body_len::<T>(this)
+pub fn len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(this: &T) -> usize {
+    C::len(noprefix::len(this)) + noprefix::len(this)
 }
 
-pub fn prefix_len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(this: &T) -> usize {
-    C::len(value_len::<T>(this))
-}
-
-pub fn prefixed_len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(this: &T) -> usize {
-    prefix_len::<T, C>(this) + value_len::<T>(this)
-}
-
-pub fn encode_len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
-    buf: &mut &mut [u8],
-    this: &T,
-) -> Result<(), Error> {
-    C::write(buf, value_len::<T>(this)).map_err(Error::from)
-}
-
-pub fn encode_header<'a, T: Wired<'a>>(buf: &mut &mut [u8], this: &T) -> Result<(), Error> {
-    header::encode::<_, T::HeaderCodec>(buf, T::header(this)?).map_err(Error::from)
-}
-
-pub fn encode_body<'a, T: Wired<'a>>(buf: &mut &mut [u8], this: T) -> Result<(), Error> {
-    T::encode_body(this, buf)
-}
-
-pub fn encode_value<'a, T: Wired<'a>>(buf: &mut &mut [u8], this: T) -> Result<(), Error> {
-    encode_header::<T>(buf, &this)?;
-    encode_body::<T>(buf, this)
+pub fn header<'a, T: Wired<'a>>(this: &T) -> Result<T::Header, Error> {
+    T::header(this)
 }
 
 pub fn encode<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
     buf: &mut &mut [u8],
     this: T,
 ) -> Result<(), Error> {
-    encode_len::<T, C>(buf, &this)?;
-    encode_value::<T>(buf, this)
-}
-
-pub fn decode_len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
-    buf: &mut &[u8],
-) -> Result<usize, Error> {
-    C::read(buf).map_err(Error::from)
-}
-
-pub fn decode_header<'a, T: Wired<'a>>(buf: &mut &[u8]) -> Result<T::Header, Error> {
-    header::decode::<T::Header, T::HeaderCodec>(buf).map_err(Error::from)
-}
-
-pub fn decode_body<'a, T: Wired<'a>>(
-    buf: &mut &'a [u8],
-    len: usize,
-    h: T::Header,
-) -> Result<T, Error> {
-    T::decode_body(buf, len, h)
-}
-
-pub fn decode_value<'a, T: Wired<'a>>(buf: &mut &'a [u8], len: usize) -> Result<T, Error> {
-    let h = decode_header::<T>(buf)?;
-    decode_body::<T>(buf, len - core::mem::size_of::<T::Header>(), h)
+    C::write(buf, noprefix::len(&this))?;
+    noprefix::encode::<T>(buf, this)
 }
 
 pub fn decode<'a, T: Wired<'a>, C: scalar::Codec<usize>>(buf: &mut &'a [u8]) -> Result<T, Error> {
-    let len = decode_len::<T, C>(buf)?;
-    decode_value::<T>(buf, len)
+    let len = C::read(buf)?;
+    noprefix::decode(buf, len)
 }
 
-pub mod opt {
+#[cfg(feature = "randomized")]
+pub fn randomized<'a, T: Randomized<'a>>(buf: &mut &'a mut [u8]) -> Result<T, Error> {
+    T::randomized(buf)
+}
+
+#[wfu(
+    tool(optional),
+    base_module = super,
+    template = Wired::<'a>,
+    codec = scalar::Codec::<usize>,
+    borrow
+)]
+pub mod optional {
     use super::*;
 
-    pub fn header_len<'a, T: Wired<'a>>(this: &Option<T>) -> usize {
-        if this.is_some() {
-            super::header_len::<T>()
-        } else {
-            0
-        }
+    #[wfu(
+        tool(optional),
+        base_module = super::super::noprefixnohead,
+        template = Wired::<'a>,
+        decode_param(name = h, ty = T::Header),
+        decode_param(name = len, ty = usize),
+        borrow
+    )]
+    pub mod noprefixnohead {
+        use super::super::*;
+    }
+    #[wfu(
+        tool(optional),
+        base_module = super::super::noprefix,
+        template = Wired::<'a>,
+        decode_param(name = len, ty = usize),
+        borrow
+    )]
+    pub mod noprefix {
+        use super::super::*;
     }
 
-    pub fn body_len<'a, T: Wired<'a>>(this: &Option<T>) -> usize {
-        if let Some(this) = this {
-            super::body_len::<T>(this)
-        } else {
-            0
-        }
+    #[wfu(
+        tool(optional),
+        base_module = super::super::nohead,
+        template = Wired::<'a>,
+        codec = scalar::Codec::<usize>,
+        decode_param(name = h, ty = T::Header),
+        borrow
+    )]
+    pub mod nohead {
+        use super::super::*;
     }
 
-    pub fn value_len<'a, T: Wired<'a>>(this: &Option<T>) -> usize {
-        if let Some(this) = this {
-            super::value_len::<T>(this)
-        } else {
-            0
-        }
-    }
-
-    pub fn prefix_len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(this: &Option<T>) -> usize {
-        if let Some(this) = this {
-            super::prefix_len::<T, C>(this)
-        } else {
-            0
-        }
-    }
-
-    pub fn prefixed_len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(this: &Option<T>) -> usize {
-        if let Some(this) = this {
-            super::prefixed_len::<T, C>(this)
-        } else {
-            0
-        }
-    }
-
-    pub fn encode_len<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
-        buf: &mut &mut [u8],
-        this: &Option<T>,
-    ) -> Result<(), Error> {
-        if let Some(this) = this {
-            super::encode_len::<T, C>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode_header<'a, T: Wired<'a>>(
-        buf: &mut &mut [u8],
-        this: &Option<T>,
-    ) -> Result<(), Error> {
-        if let Some(this) = this {
-            super::encode_header::<T>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode_body<'a, T: Wired<'a>>(
-        buf: &mut &mut [u8],
-        this: Option<T>,
-    ) -> Result<(), Error> {
-        if let Some(this) = this {
-            super::encode_body::<T>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode_value<'a, T: Wired<'a>>(
-        buf: &mut &mut [u8],
-        this: Option<T>,
-    ) -> Result<(), Error> {
-        if let Some(this) = this {
-            super::encode_value::<T>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
-        buf: &mut &mut [u8],
-        this: Option<T>,
-    ) -> Result<(), Error> {
-        if let Some(this) = this {
-            super::encode::<T, C>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn decode_value<'a, T: Wired<'a>>(
-        buf: &mut &'a [u8],
-        cond: bool,
-        len: usize,
-    ) -> Result<Option<T>, Error> {
-        if cond {
-            super::decode_value::<T>(buf, len).map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn decode<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
-        buf: &mut &'a [u8],
-        cond: bool,
-    ) -> Result<Option<T>, Error> {
-        if cond {
-            super::decode::<T, C>(buf).map(Some)
-        } else {
-            Ok(None)
-        }
+    #[cfg(feature = "randomized")]
+    pub fn randomized<'a, T: Randomized<'a>>(buf: &mut &'a mut [u8]) -> Result<Option<T>, Error> {
+        rand::random_bool(0.5)
+            .then(|| T::randomized(buf))
+            .transpose()
     }
 }
 
-pub mod cond {
+#[wfu(
+    tool(conditional),
+    base_module = super,
+    template = Wired::<'a>,
+    codec = scalar::Codec::<usize>,
+    borrow
+)]
+pub mod conditional {
     use super::*;
 
-    pub fn header_len<'a, T: Wired<'a> + PartialEq>(this: &T, skip_if: &T) -> usize {
-        if this != skip_if {
-            super::header_len::<T>()
-        } else {
-            0
-        }
+    #[wfu(
+        tool(conditional),
+        base_module = super::super::noprefixnohead,
+        template = Wired::<'a>,
+        decode_param(name = h, ty = T::Header),
+        decode_param(name = len, ty = usize),
+        borrow
+    )]
+    pub mod noprefixnohead {
+        use super::super::*;
+    }
+    #[wfu(
+        tool(conditional),
+        base_module = super::super::noprefix,
+        template = Wired::<'a>,
+        decode_param(name = len, ty = usize),
+        borrow
+    )]
+    pub mod noprefix {
+        use super::super::*;
     }
 
-    pub fn body_len<'a, T: Wired<'a> + PartialEq>(this: &T, skip_if: &T) -> usize {
-        if this != skip_if {
-            super::body_len::<T>(this)
-        } else {
-            0
-        }
+    #[wfu(
+        tool(conditional),
+        base_module = super::super::nohead,
+        template = Wired::<'a>,
+        codec = scalar::Codec::<usize>,
+        decode_param(name = h, ty = T::Header),
+        borrow
+    )]
+    pub mod nohead {
+        use super::super::*;
     }
 
-    pub fn value_len<'a, T: Wired<'a> + PartialEq>(this: &T, skip_if: &T) -> usize {
-        if this != skip_if {
-            super::value_len::<T>(this)
-        } else {
-            0
-        }
-    }
-
-    pub fn prefix_len<'a, T: Wired<'a> + PartialEq, C: scalar::Codec<usize>>(
-        this: &T,
-        skip_if: &T,
-    ) -> usize {
-        if this != skip_if {
-            super::prefix_len::<T, C>(this)
-        } else {
-            0
-        }
-    }
-
-    pub fn prefixed_len<'a, T: Wired<'a> + PartialEq, C: scalar::Codec<usize>>(
-        this: &T,
-        skip_if: &T,
-    ) -> usize {
-        if this != skip_if {
-            super::prefixed_len::<T, C>(this)
-        } else {
-            0
-        }
-    }
-
-    pub fn encode_len<'a, T: Wired<'a> + PartialEq, C: scalar::Codec<usize>>(
-        buf: &mut &mut [u8],
-        this: &T,
-        skip_if: &T,
-    ) -> Result<(), Error> {
-        if this != skip_if {
-            super::encode_len::<T, C>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode_header<'a, T: Wired<'a> + PartialEq>(
-        buf: &mut &mut [u8],
-        this: &T,
-        skip_if: &T,
-    ) -> Result<(), Error> {
-        if this != skip_if {
-            super::encode_header::<T>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode_body<'a, T: Wired<'a> + PartialEq>(
-        buf: &mut &mut [u8],
-        this: T,
-        skip_if: &T,
-    ) -> Result<(), Error> {
-        if &this != skip_if {
-            super::encode_body::<T>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode_value<'a, T: Wired<'a> + PartialEq>(
-        buf: &mut &mut [u8],
-        this: T,
-        skip_if: &T,
-    ) -> Result<(), Error> {
-        if &this != skip_if {
-            super::encode_value::<T>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn encode<'a, T: Wired<'a> + PartialEq, C: scalar::Codec<usize>>(
-        buf: &mut &mut [u8],
-        this: T,
-        skip_if: T,
-    ) -> Result<(), Error> {
-        if this != skip_if {
-            super::encode::<T, C>(buf, this)
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn decode_value<'a, T: Wired<'a>>(
-        buf: &mut &'a [u8],
-        cond: bool,
-        len: usize,
-        skip_if: T,
-    ) -> Result<T, Error> {
-        if cond {
-            super::decode_value::<T>(buf, len)
-        } else {
-            Ok(skip_if)
-        }
-    }
-
-    pub fn decode<'a, T: Wired<'a>, C: scalar::Codec<usize>>(
-        buf: &mut &'a [u8],
-        cond: bool,
-        skip_if: T,
-    ) -> Result<T, Error> {
-        if cond {
-            super::decode::<T, C>(buf)
-        } else {
-            Ok(skip_if)
-        }
+    #[cfg(feature = "randomized")]
+    pub fn randomized<'a, T: Randomized<'a>>(buf: &mut &'a mut [u8], skip: T) -> Result<T, Error> {
+        rand::random_bool(0.5)
+            .then(|| T::randomized(buf))
+            .transpose()
+            .map(|r| r.unwrap_or(skip))
     }
 }
 
@@ -357,7 +210,368 @@ pub(crate) mod inner {
         fn header(&self) -> Result<Self::Header, Error>;
 
         fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), Error>;
-        fn decode_body(buf: &mut &'a [u8], len: usize, header: Self::Header)
-        -> Result<Self, Error>;
+        fn decode_body(buf: &mut &'a [u8], len: usize, h: Self::Header) -> Result<Self, Error>;
+    }
+
+    #[cfg(feature = "randomized")]
+    pub trait Randomized<'a>: Sized {
+        fn randomized(buf: &mut &'a mut [u8]) -> Result<Self, crate::msg::Error>;
+    }
+}
+
+#[cfg(feature = "alloc")]
+mod impls {
+    use crate::slice;
+    use core::ffi::CStr;
+
+    use super::inner::*;
+    use super::*;
+
+    impl<'a> Wired<'a> for alloc::vec::Vec<u8> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&[u8]>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&[u8]>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::vec::Vec::from(
+                slice::noprefix::decode::<&[u8]>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a, const N: usize> Wired<'a> for [u8; N] {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&[u8; N]>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&[u8; N]>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(*slice::noprefix::decode::<&[u8; N]>(buf, len).map_err(Error::from)?)
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::boxed::Box<[u8]> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&[u8]>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&[u8]>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::boxed::Box::from(
+                slice::noprefix::decode::<&[u8]>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::rc::Rc<[u8]> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&[u8]>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&[u8]>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::rc::Rc::from(
+                slice::noprefix::decode::<&[u8]>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::sync::Arc<[u8]> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&[u8]>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&[u8]>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::sync::Arc::from(
+                slice::noprefix::decode::<&[u8]>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::borrow::Cow<'a, [u8]> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&[u8]>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&[u8]>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::borrow::Cow::Borrowed(
+                slice::noprefix::decode::<&[u8]>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::boxed::Box<str> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&str>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&str>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::boxed::Box::from(
+                slice::noprefix::decode::<&str>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::rc::Rc<str> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&str>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&str>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::rc::Rc::from(
+                slice::noprefix::decode::<&str>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::sync::Arc<str> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&str>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&str>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::sync::Arc::from(
+                slice::noprefix::decode::<&str>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::borrow::Cow<'a, str> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&str>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&str>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::borrow::Cow::Borrowed(
+                slice::noprefix::decode::<&str>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::boxed::Box<CStr> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&CStr>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&CStr>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::boxed::Box::from(
+                slice::noprefix::decode::<&CStr>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::rc::Rc<CStr> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&CStr>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&CStr>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::rc::Rc::from(
+                slice::noprefix::decode::<&CStr>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::sync::Arc<CStr> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&CStr>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&CStr>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::sync::Arc::from(
+                slice::noprefix::decode::<&CStr>(buf, len).map_err(Error::from)?,
+            ))
+        }
+    }
+
+    impl<'a> Wired<'a> for alloc::borrow::Cow<'a, CStr> {
+        type Header = ();
+        type HeaderCodec = super::scalar::Be;
+
+        fn body_len(&self) -> usize {
+            slice::noprefix::len::<&CStr>(self)
+        }
+
+        fn header(&self) -> Result<Self::Header, super::Error> {
+            Ok(())
+        }
+
+        fn encode_body(self, buf: &mut &mut [u8]) -> Result<(), super::Error> {
+            slice::noprefix::encode::<&CStr>(buf, &self)
+                .map_err(Error::from)
+                .map(|_| ())
+        }
+
+        fn decode_body(buf: &mut &'a [u8], len: usize, _: Self::Header) -> Result<Self, Error> {
+            Ok(alloc::borrow::Cow::Borrowed(
+                slice::noprefix::decode::<&CStr>(buf, len).map_err(Error::from)?,
+            ))
+        }
     }
 }

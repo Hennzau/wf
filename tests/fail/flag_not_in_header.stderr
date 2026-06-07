@@ -1,5 +1,13 @@
-error: Too few items: Expected at least 1
- --> tests/fail/flag_not_in_header.rs:6:10
+error[E0599]: no associated function or constant named `WF_FLAG_H` found for struct `Bad` in the current scope
+ --> tests/fail/flag_not_in_header.rs:6:44
   |
-6 |     #[wf(opt(), format = Be)]
-  |          ^^^
+5 | struct Bad {
+  | ---------- associated function or constant `WF_FLAG_H` not found for this struct
+6 |     #[wf(scalar(format(be)), opt(trigger = H))]
+  |                                            ^ associated function or constant not found in `Bad`
+  |
+help: there is an associated constant `WF_FLAG_F` with a similar name
+  |
+6 -     #[wf(scalar(format(be)), opt(trigger = H))]
+6 +     #[wf(scalar(format(be)), opt(trigger = WF_FLAG_F))]
+  |

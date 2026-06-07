@@ -16,20 +16,20 @@ error[E0277]: the trait bound `(): From<usize>` is not satisfied
           and $N others
   = note: required for `usize` to implement `Into<()>`
   = note: required for `()` to implement `TryFrom<usize>`
-note: required by a bound in `put`
+note: required by a bound in `elvwf::header::put`
  --> src/header.rs
   |
   | pub fn put<H: Wired, E, C: TryInto<H, Error = E>>(
   |                                       ^^^^^^^^^ required by this bound in `put`
   = note: this error originates in the derive macro `Wired` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0599]: no associated function or constant named `SLOT_S` found for struct `Bad<'a>` in the current scope
- --> tests/fail/slot_on_struct_without_header.rs:5:21
+error[E0599]: no associated function or constant named `WF_SLOT_S` found for struct `Bad<'a>` in the current scope
+ --> tests/fail/slot_on_struct_without_header.rs:5:27
   |
 4 | struct Bad<'a> {
-  | -------------- associated function or constant `SLOT_S` not found for this struct
-5 |     #[wf(len(slot = S))]
-  |                     ^ associated function or constant not found in `Bad<'a>`
+  | -------------- associated function or constant `WF_SLOT_S` not found for this struct
+5 |     #[wf(slice(len(slot = S)))]
+  |                           ^ associated function or constant not found in `Bad<'a>`
 
 error[E0277]: the trait bound `usize: TryFrom<()>` is not satisfied
  --> tests/fail/slot_on_struct_without_header.rs:3:10
@@ -67,6 +67,6 @@ help: `usize` implements trait `From<T>`
 note: required by a bound in `elvwf::header::get`
  --> src/header.rs
   |
-  | pub fn get<H: Wired, E, T: TryFrom<H, Error = E>>(header: H, slot: H) -> Result<T, Error>
+  | pub fn get<H: Wired, E, C: TryFrom<H, Error = E>>(header: H, slot: H) -> Result<C, Error>
   |                            ^^^^^^^^^^^^^^^^^^^^^ required by this bound in `get`
   = note: this error originates in the derive macro `Wired` which comes from the expansion of the macro `impl_from` (in Nightly builds, run with -Z macro-backtrace for more info)

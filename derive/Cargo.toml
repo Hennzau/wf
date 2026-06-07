@@ -1,17 +1,20 @@
 [package]
 name = "elvwf-derive"
-version = "0.1.1"
+version = "0.1.0"
 edition = "2024"
 description = "Bit-precise wire format definitions"
-repository = "https://hennzau.fr/jj/elvwf"
+repository = "https://elvsc.fr/elvwf"
 keywords = ["codec", "binary", "wire", "derive", "protocol"]
 categories = ["encoding", "network-programming", "no-std"]
 
 readme = "../README.md"
-license = "AGPL-3.0-only"
+license = "GPLv3"
 
 [lib]
 proc-macro = true
+
+[features]
+randomized = []
 
 [dependencies]
 proc-macro2 = { version = "1" }

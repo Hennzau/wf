@@ -1,5 +1,5 @@
-error: Too few items: Expected at least 1
+error: Missing field `trigger`
  --> tests/fail/opt_if_on_option.rs:6:10
   |
-6 |     #[wf(opt(if = None), format = Be)]
+6 |     #[wf(opt(if = None), scalar(format(be)))]
   |          ^^^

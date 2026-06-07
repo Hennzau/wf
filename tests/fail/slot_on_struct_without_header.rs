@@ -2,7 +2,7 @@ use elvwf::Wired;
 
 #[derive(Wired)]
 struct Bad<'a> {
-    #[wf(len(slot = S))]
+    #[wf(slice(len(slot = S)))]
     content: &'a str,
 }
 

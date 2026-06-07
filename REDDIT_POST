@@ -1,0 +1,58 @@
+**wf: a Rust crate for declarative binary protocol encoding/decoding**
+
+Hey,
+
+I've been working on **`wf`**, a crate for describing binary wire protocols directly in Rust using derive macros, and wanted to share it here.
+
+The core idea is to let you express three kinds of "wire messages" declaratively:
+
+- **struct**, a message made of scalars, slices, or other messages, with an optional header (flags/slots/constants defined via a small DSL)
+- **union**, an enum in Rust that represents "one of several possible struct messages," discriminated at decode time via an ID in the header
+- **enum**, just an integer on the wire, used for codes (error codes, known values, etc.)
+
+Example:
+
+```rust
+#[derive(Wired, Randomized, Clone, Copy, Debug, PartialEq)]
+#[wf(enum(repr(u32), format(le)))]
+enum MyEnum {
+    V1 = 1,
+    V2 = 2,
+    V3 = 3,
+    V4 = 4,
+    V5 = 5,
+}
+
+#[derive(Wired, Randomized, Clone, Debug, PartialEq)]
+#[wf(struct(header(dsl = "S:16|D:16")))]
+struct MyMsg<'a, const N: usize> {
+    #[wf(slice(len(slot = S), bounded(low = 1, high = 18)))]
+    name: &'a str,
+
+    #[wf(scalar(format(le), bounded(low = 0, high = u32::MAX - 1)))]
+    value: u32,
+
+    #[wf(msg(len(embedded)))]
+    code: MyEnum,
+
+    #[wf(slice(len(remaining)))]
+    payload: &'a [u8]
+}
+```
+
+Some features:
+
+- Configurable alignment (16/32/64-bit)
+- Optional headers with a readable DSL for flags/slots/constants
+- Endianness control per-field, including variable-length encoding
+- Slices (`&[u8]`, `&[u8; N]`, `&str`, `&CStr`) with flexible length encoding (in a header slot, embedded, or "remaining bytes")
+- Optional and conditional fields
+- Bound checking via `#[wf(bounded(...))]`
+- A `Randomized` derive macro to generate fake valid messages for testing
+- A `WiredBlank` derive macro that keeps your `#[wf]` annotations around so you can expand/flatten the generated code and hand-edit it if the crate doesn't cover something you need
+
+The design goal is that the generated code stays simple and readable. If you hit a wall with something the crate can't express, you're meant to be able to drop down to the generated code and adjust it yourself.
+
+Still a work in progress, but it's already usable for real protocol work (I did a similar thing for [zenoh](https://github.com/eclipse-zenoh/zenoh-nostd)). Would love feedback or ideas for missing features :)
+
+Repo: [wf](https://github.com/Hennzau/wf) (crate name is elvwf, it might not be the public name of course, for now it's just an internal crate)

@@ -1,9 +1,9 @@
 use elvwf::Wired;
 
 #[derive(Wired)]
-#[wf(header(dsl = "A:8|_:8"))]
+#[wf(struct(header(dsl = "A:8|_:8")))]
 struct Bad<'a> {
-    #[wf(len(slot = S))]
+    #[wf(slice(len(slot = S)))]
     content: &'a str,
 }
 

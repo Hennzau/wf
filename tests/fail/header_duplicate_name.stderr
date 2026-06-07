@@ -1,10 +1,10 @@
-error[E0592]: duplicate definitions with name `SLOT_A`
+error[E0592]: duplicate definitions with name `WF_SLOT_A`
  --> tests/fail/header_duplicate_name.rs:3:10
   |
 3 | #[derive(Wired)]
   |          ^^^^^
   |          |
-  |          duplicate definitions for `SLOT_A`
-  |          other definition for `SLOT_A`
+  |          duplicate definitions for `WF_SLOT_A`
+  |          other definition for `WF_SLOT_A`
   |
   = note: this error originates in the derive macro `Wired` (in Nightly builds, run with -Z macro-backtrace for more info)

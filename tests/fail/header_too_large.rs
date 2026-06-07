@@ -1,9 +1,9 @@
 use elvwf::Wired;
 
 #[derive(Wired)]
-#[wf(header(dsl = "A:128"))]
+#[wf(struct(header(dsl = "A:128")))]
 struct Bad {
-    #[wf(format = Be)]
+    #[wf(scalar(format(be)))]
     a: u64,
 }
 

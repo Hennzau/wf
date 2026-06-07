@@ -1,5 +1,0 @@
-error: This type must not have a `format` attribute
- --> tests/fail/format_on_slice.rs:7:14
-  |
-7 |     content: &'a str,
-  |              ^

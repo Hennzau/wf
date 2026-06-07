@@ -1,9 +1,9 @@
 use elvwf::Wired;
 
 #[derive(Wired)]
-#[wf(header(dsl = "F:1|_:7"))]
+#[wf(struct(header(dsl = "F:1|_:7")))]
 struct Bad {
-    #[wf(opt(if = None), format = Be)]
+    #[wf(opt(if = None), scalar(format(be)))]
     value: Option<u32>,
 }
 

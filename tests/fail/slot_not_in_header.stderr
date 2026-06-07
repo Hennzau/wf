@@ -1,12 +1,13 @@
-error[E0599]: no associated function or constant named `SLOT_S` found for struct `Bad<'a>` in the current scope
- --> tests/fail/slot_not_in_header.rs:6:21
+error[E0599]: no associated function or constant named `WF_SLOT_S` found for struct `Bad<'a>` in the current scope
+ --> tests/fail/slot_not_in_header.rs:6:27
   |
 5 | struct Bad<'a> {
-  | -------------- associated function or constant `SLOT_S` not found for this struct
-6 |     #[wf(len(slot = S))]
-  |                     ^ associated function or constant not found in `Bad<'a>`
+  | -------------- associated function or constant `WF_SLOT_S` not found for this struct
+6 |     #[wf(slice(len(slot = S)))]
+  |                           ^ associated function or constant not found in `Bad<'a>`
   |
-help: there is an associated constant `SLOT_A` with a similar name
+help: there is an associated constant `WF_SLOT_A` with a similar name
   |
-6 |     #[wf(len(slot = SLOT_A))]
-  |                      +++++
+6 -     #[wf(slice(len(slot = S)))]
+6 +     #[wf(slice(len(slot = WF_SLOT_A)))]
+  |

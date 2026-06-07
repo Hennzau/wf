@@ -1,64 +1,84 @@
 use elvwf::prelude::*;
 
-#[derive(Wired, Clone, Debug, PartialEq)]
-#[wf(header(dsl = "S:16"))]
-struct Attachment<'a> {
-    #[wf(len(slot = S))]
+#[derive(Wired, Randomized, Clone, Debug, PartialEq)]
+#[wf(struct(header(dsl = "S:16")))]
+struct Attachment<'a, const N: usize> {
+    #[wf(slice(len(slot = S), bounded(low = 0, high = 16)))]
     content: &'a str,
+
+    #[wf(slice(len(embedded)))]
+    extra: &'a [u8; N],
 }
 
-#[derive(Wired, Clone, Debug, PartialEq)]
-#[wf(header(dsl = "A|B|C|D|E|F|_:2"))]
-struct Message<'a> {
-    #[wf(opt(flag = A), format = VLE)]
+#[derive(Wired, Randomized, Clone, Copy, Debug, PartialEq)]
+#[wf(enum(repr(u32), format(le)))]
+enum MyEnum {
+    V1 = 1,
+    V2 = 2,
+    V3 = 3,
+    V4 = 4,
+    V5 = 5,
+}
+
+#[derive(Wired, Randomized, Clone, Debug, PartialEq)]
+#[wf(struct(header(dsl = "_:6|A|B")))]
+struct Inner {
+    #[wf(scalar(format(le), bounded(low = 16, high = 256)), opt(trigger = A))]
+    a: Option<u32>,
+    #[wf(scalar(format(vle), bounded(low = 0, high = 16)), opt(trigger = B))]
+    b: Option<u16>,
+}
+
+#[derive(Wired, Randomized, Clone, Debug, PartialEq)]
+#[wf(struct(header(dsl = "A|B|C|D|E|F|_:2")))]
+struct Message<'a, T> {
+    #[wf(opt(trigger = A), scalar(format(vle)))]
     pub opt_scalar: Option<u32>,
-    #[wf(opt(flag = B), len(prefixed(format = Ne)))]
+    #[wf(opt(trigger = B), slice(len(prefixed(ne)), bounded(low = 0, high = 8)))]
     pub opt_slice: Option<&'a str>,
-    #[wf(opt(flag = C), len(prefixed(format = Ne)))]
-    pub opt_msg: Option<Attachment<'a>>,
+    #[wf(opt(trigger = C), msg(len(prefixed(ne))))]
+    pub opt_msg: Option<Attachment<'a, 3>>,
 
-    #[wf(format = Be)]
+    #[wf(scalar(format(be)))]
     pub scalar: u64,
-    #[wf(len(prefixed(format = Ne)))]
+    #[wf(slice(len(prefixed(ne))))]
     pub slice: &'a [u8; 10],
-    #[wf(len(prefixed(format = Le)))]
-    pub msg: Attachment<'a>,
+    #[wf(msg(len(prefixed(le))))]
+    pub msg: Attachment<'a, 3>,
 
-    #[wf(opt(if = 0, flag = D), format = Ne)]
+    #[wf(msg(len(embedded), header(flattened(shift = 0))))]
+    pub inner: Inner,
+
+    #[wf(opt(if = 0, trigger = D), scalar(format(ne)))]
     pub cond_scalar: u16,
-    #[wf(opt(if = { "hello" }, flag = E), len(prefixed(format = Le)))]
+    #[wf(opt(if = { "hello" }, trigger = E), slice(len(prefixed(le)), bounded(low = 3, high = 8)))]
     pub cond_slice: &'a str,
-    #[wf(opt(if = Attachment { content: "hello" }, flag = F), len(prefixed(format = VLE)))]
-    pub cond_msg: Attachment<'a>,
+    #[wf(opt(if = Attachment { content: "hello", extra: &[] }, trigger = F))]
+    #[wf(msg(len(prefixed(vle))))]
+    pub cond_msg: Attachment<'a, 0>,
 
-    #[wf(len(remaining))]
+    #[wf(msg(len(prefixed(vle))))]
+    pub extra: T,
+
+    #[wf(msg(len(embedded)))]
+    pub myenum: MyEnum,
+
+    #[wf(slice(len(remaining), bounded(low = 0, high = 32)))]
     pub payload: &'a [u8],
 }
 
 fn main() {
-    let msg = Message {
-        opt_scalar: Some(2),
-        opt_slice: Some("AHAH"),
-        opt_msg: Some(Attachment { content: "hello" }),
+    for _ in 0..1000 {
+        let mut src = [0u8; 512];
+        let msg = elvwf::msg::randomized::<Message<Attachment<3>>>(&mut &mut src[..]).unwrap();
 
-        scalar: 1208420121,
-        slice: &[19, 29, 39, 49, 59, 69, 79, 89, 99, 109],
-        msg: Attachment { content: "ICI" },
+        let mut data = [0u8; 512];
+        let buf = &mut &mut data[..];
+        elvwf::msg::encode::<Message<Attachment<3>>, elvwf::VLE>(buf, msg.clone()).unwrap();
 
-        cond_scalar: 12,
-        cond_slice: "WORLD",
-        cond_msg: Attachment {
-            content: "biiiiiiiz",
-        },
-        payload: &[0, 1, 2, 3, 4, 5],
-    };
+        let buf = &mut &data[..];
+        let value = elvwf::msg::decode::<Message<Attachment<3>>, elvwf::VLE>(buf).unwrap();
 
-    let mut data = [0u8; 128];
-    let buf = &mut &mut data[..];
-    elvwf::msg::encode::<Message, elvwf::scalar::VLE>(buf, msg.clone()).unwrap();
-
-    let buf = &mut &data[..];
-    let value = elvwf::msg::decode::<Message, elvwf::scalar::VLE>(buf).unwrap();
-
-    assert_eq!(msg, value);
+        assert_eq!(msg, value);
+    }
 }

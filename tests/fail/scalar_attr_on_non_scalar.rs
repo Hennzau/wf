@@ -2,13 +2,13 @@ use elvwf::Wired;
 
 #[derive(Wired, Clone, Debug, PartialEq)]
 struct Inner {
-    #[wf(format = Be)]
+    #[wf(scalar(format(be)))]
     x: u32,
 }
 
 #[derive(Wired)]
 struct Bad {
-    #[wf(format = Le)]
+    #[wf(scalar(format(le)))]
     inner: Inner,
 }
 

@@ -1,18 +1,25 @@
 [package]
 name = "elvwf"
-version = "0.1.1"
+version = "0.1.0"
 edition = "2024"
 description = "Bit-precise wire format definitions"
-repository = "https://hennzau.fr/jj/elvwf"
+repository = "https://elvsc.fr/elvwf"
 keywords = ["codec", "binary", "wire", "derive", "protocol"]
 categories = ["encoding", "network-programming", "no-std"]
 
 readme = "README.md"
 license = "GPLv3"
 
+[features]
+default = ["alloc", "randomized"]
+alloc = ["rand?/alloc"]
+randomized = ["dep:rand", "elvwf-derive/randomized"]
+
 [dependencies]
 elvwf-derive = { version = "0.1.0", path = "derive" }
-thiserror = { version = "2.0.18" }
+
+bitflags = { version = "2" }
+rand = { version = "0.10", optional = true }
 
 [dev-dependencies]
-trybuild = "1.0.116"
+trybuild = { version = "1" }
